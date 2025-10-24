@@ -24,7 +24,7 @@ FACILITIES = {
 }
 
 
-@st.cache_data
+@st.cache_data(ttl=60)  # Refresh cache every 60 seconds to show new data
 def load_data():
     """Load all parking data from SQLite database."""
     conn = sqlite3.connect(DB_PATH)
