@@ -50,31 +50,38 @@ def load_data():
     # Extract date (without time)
     df['date'] = df['message_date'].dt.date
 
+    # Extract day of week (Monday, Tuesday, etc.)
+    df['day_of_week'] = df['message_date'].dt.day_name()
+
     # Calculate occupancy rate
     df['occupancy_rate'] = (df['total_occupancy'] / df['total_spots']) * 100
 
     return df
 
 
-def calculate_time_averages(df, facility_id, start_date, end_date, granularity="Hourly"):
-    """Calculate average occupancy and rate by time interval for selected facility and date range.
+def calculate_time_averages(df, facility_id, day_filter="All Days", granularity="Hourly"):
+    """Calculate average occupancy and rate by time interval for selected facility and day filter.
 
     Args:
         df: DataFrame with parking data
         facility_id: Facility ID to filter
-        start_date: Start date for filtering
-        end_date: End date for filtering
+        day_filter: Day of week to filter ("Today", "All Days", or specific day like "Monday")
         granularity: "Hourly" or "30 Minutes"
 
     Returns:
         Tuple of (averaged DataFrame, record count)
     """
-    # Filter by facility and date range
-    filtered_df = df[
-        (df['facility_id'] == facility_id) &
-        (df['date'] >= start_date) &
-        (df['date'] <= end_date)
-    ].copy()
+    # Filter by facility
+    filtered_df = df[df['facility_id'] == facility_id].copy()
+
+    # Filter by day
+    if day_filter == "Today":
+        # Get today's date and filter to only today's data
+        today = pd.Timestamp.now().date()
+        filtered_df = filtered_df[filtered_df['date'] == today].copy()
+    elif day_filter != "All Days":
+        # Filter by day of week (Monday, Tuesday, etc.)
+        filtered_df = filtered_df[filtered_df['day_of_week'] == day_filter].copy()
 
     if filtered_df.empty:
         return None, 0
@@ -176,7 +183,7 @@ def create_occupancy_chart(time_avg, facility_name, display_mode, granularity):
             title_font=dict(size=14, color='#dc2626'),
             gridcolor='#d1d5db',
             showgrid=True,
-            rangemode='tozero',
+            range=[0, 100],
             tickfont=dict(size=12, color='#1f2937')
         )
 
@@ -243,27 +250,16 @@ def main():
         index=0
     )
 
-    # Get min and max dates from data for this facility
-    facility_df = df[df['facility_id'] == facility_id]
-    min_date = facility_df['date'].min()
-    max_date = facility_df['date'].max()
-
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Date Range")
+    st.sidebar.subheader("Day Filter")
 
-    # Date range selection
-    date_range = st.sidebar.date_input(
-        "Select date range for averaging",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date
+    # Day of week selection
+    day_filter = st.sidebar.radio(
+        "Select day(s) to analyze",
+        options=["Today", "All Days", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        index=0,
+        help="View today's current data, or analyze historical patterns by day of week"
     )
-
-    # Handle date range input
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start_date, end_date = date_range
-    else:
-        start_date = end_date = date_range if not isinstance(date_range, tuple) else date_range[0]
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("Display Options")
@@ -286,12 +282,12 @@ def main():
 
     st.sidebar.markdown("---")
 
-    # Calculate time averages based on granularity
-    time_avg, record_count = calculate_time_averages(df, facility_id, start_date, end_date, granularity)
+    # Calculate time averages based on day filter and granularity
+    time_avg, record_count = calculate_time_averages(df, facility_id, day_filter, granularity)
 
     if time_avg is None or time_avg.empty:
-        st.warning(f"No data available for {FACILITIES[facility_id]} in the selected date range.")
-        st.info("Try selecting a different date range or facility.")
+        st.warning(f"No data available for {FACILITIES[facility_id]} with the selected day filter.")
+        st.info("Try selecting a different day or facility.")
         return
 
     # Display summary metrics
@@ -311,8 +307,14 @@ def main():
         avg_rate = time_avg['occupancy_rate'].mean()
         st.metric("Avg Rate", f"{avg_rate:.1f}%")
 
-    # Display date range info
-    st.info(f"📅 Showing averages from **{start_date.strftime('%B %d, %Y')}** to **{end_date.strftime('%B %d, %Y')}**")
+    # Display day filter info
+    if day_filter == "Today":
+        from datetime import datetime
+        st.info(f"📊 Showing: **Today's data** ({datetime.now().strftime('%B %d, %Y')})")
+    elif day_filter == "All Days":
+        st.info(f"📊 Showing: **All Days** (combined patterns across all days of the week)")
+    else:
+        st.info(f"📊 Showing: **{day_filter}** patterns only")
 
     # Create and display the chart
     fig = create_occupancy_chart(time_avg, FACILITIES[facility_id], display_mode, granularity)
@@ -389,13 +391,17 @@ def main():
     st.sidebar.info("""
     **About this app:**
 
-    This visualization shows average parking occupancy patterns throughout the day.
+    This visualization shows parking occupancy patterns throughout the day.
 
-    **Display options:**
+    **Features:**
+    - **Day Filter**: View today's current data, all days combined, or specific day patterns
     - **Metric**: Absolute spots (blue) or percentage rate (red)
     - **Granularity**: Hourly or 30-minute intervals
 
-    Use the controls above to explore different facilities, time periods, and metrics.
+    **Examples:**
+    - Select "Today" to see current day occupancy
+    - Select "Monday" to see typical Monday patterns
+    - Compare "Friday" vs "Saturday" to see weekday/weekend differences
     """)
 
 
