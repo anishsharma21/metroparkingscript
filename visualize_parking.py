@@ -247,7 +247,7 @@ def main():
         "Select Facility",
         options=list(FACILITIES.keys()),
         format_func=lambda x: FACILITIES[x],
-        index=0
+        index=1  # Default to Kellyville (south)
     )
 
     st.sidebar.markdown("---")
